@@ -1,0 +1,60 @@
+package com.example.marsphotos.data
+
+import android.content.Context
+import com.example.marsphotos.data.local.SicenetDatabase
+import com.example.marsphotos.network.SicenetApiService
+import com.example.marsphotos.network.SicenetInterceptor
+import com.example.marsphotos.network.SicenetService
+import okhttp3.OkHttpClient
+import retrofit2.Retrofit
+import retrofit2.converter.scalars.ScalarsConverterFactory
+
+interface AppContainer {
+    val sicenetRepository: SicenetRepository
+    val sicenetLocalRepository: SicenetLocalRepository
+    val sicenetService: SicenetService // Use the class for CookieJar access 
+    // The existing code has `SicenetService` class (Hand-written) AND `SicenetApiService` (Retrofit).
+    // The `SicenetRepository` uses `SicenetService` (the class).
+    // I need the `SicenetService` CLASS because it holds the COOKIEJAR.
+    // Let's check AppContainer.kt again.
+}
+
+class DefaultAppContainer(private val context: Context) : AppContainer {
+    // ...
+    // The current SicenetRepository instantiates `SicenetService()` internally!
+    // "private val service = SicenetService()" in SicenetRepository.kt
+    // This is BAD for sharing cookies if we make a new Repository.
+    // I need to lift `SicenetService` into the container.
+
+    private val baseUrl = "https://sicenet.surguanajuato.tecnm.mx/"
+
+    private val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(SicenetInterceptor())
+        .build()
+
+    private val retrofit: Retrofit = Retrofit.Builder()
+        .baseUrl(baseUrl)
+        .client(okHttpClient)
+        .addConverterFactory(ScalarsConverterFactory.create())
+        .build()
+
+    private val retrofitService: SicenetApiService by lazy {
+        retrofit.create(SicenetApiService::class.java)
+    }
+
+    override val sicenetService: SicenetService by lazy {
+        SicenetService()
+    }
+
+    override val sicenetRepository: SicenetRepository by lazy {
+        SicenetRepository(sicenetService)
+    }
+
+    private val sicenetDatabase: SicenetDatabase by lazy {
+        SicenetDatabase.getDatabase(context)
+    }
+
+    override val sicenetLocalRepository: SicenetLocalRepository by lazy {
+        SicenetLocalRepository(sicenetDatabase.sicenetDao())
+    }
+}
