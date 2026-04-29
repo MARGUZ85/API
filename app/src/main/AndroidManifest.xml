@@ -17,6 +17,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <permission android:name="com.example.marsphotos.provider.READ_DATABASE" android:protectionLevel="normal" />
+    <permission android:name="com.example.marsphotos.provider.WRITE_DATABASE" android:protectionLevel="normal" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:name=".MarsPhotosApplication"
@@ -47,5 +50,12 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <provider
+            android:name=".provider.SicenetContentProvider"
+            android:authorities="com.example.marsphotos.provider"
+            android:exported="true"
+            android:readPermission="com.example.marsphotos.provider.READ_DATABASE"
+            android:writePermission="com.example.marsphotos.provider.WRITE_DATABASE" />
     </application>
 </manifest>

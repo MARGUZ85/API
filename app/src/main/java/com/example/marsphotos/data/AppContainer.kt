@@ -12,19 +12,10 @@ import retrofit2.converter.scalars.ScalarsConverterFactory
 interface AppContainer {
     val sicenetRepository: SicenetRepository
     val sicenetLocalRepository: SicenetLocalRepository
-    val sicenetService: SicenetService // Use the class for CookieJar access 
-    // The existing code has `SicenetService` class (Hand-written) AND `SicenetApiService` (Retrofit).
-    // The `SicenetRepository` uses `SicenetService` (the class).
-    // I need the `SicenetService` CLASS because it holds the COOKIEJAR.
-    // Let's check AppContainer.kt again.
+    val sicenetService: SicenetService
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
-    // ...
-    // The current SicenetRepository instantiates `SicenetService()` internally!
-    // "private val service = SicenetService()" in SicenetRepository.kt
-    // This is BAD for sharing cookies if we make a new Repository.
-    // I need to lift `SicenetService` into the container.
 
     private val baseUrl = "https://sicenet.surguanajuato.tecnm.mx/"
 

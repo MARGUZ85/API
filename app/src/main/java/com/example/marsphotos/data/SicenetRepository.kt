@@ -5,44 +5,55 @@ import com.example.marsphotos.data.model.SicenetProfile
 import com.example.marsphotos.network.SicenetService
 
 /**
- * [DATA LAYER - REPOSITORY]
- * Implementa el patrón Repository, actuando como 'Single Source of Truth'.
- * Abstrae la complejidad del parseo de datos y manejo de errores de la capa de UI.
+ * [CAPA DE DATOS - REPOSITORIO CENTRAL]
+ * Esta clase es el "Director de Orquesta" de los datos online. 
+ * Aplica el patrón "Single Source of Truth" (Fuente Única de Verdad).
+ * 
+ * Qué hace exactamente:
+ * 1. Va a la red (usando `SicenetService.kt`) a pedir información cruda.
+ * 2. Valida que el servidor de la escuela no haya mandado un error ("Página en mantenimiento").
+ * 3. Le da esa info horrible al `SicenetParser.kt` para que la limpie.
+ * 4. Pasa esa info limpia a la base de datos o a la pantalla.
  */
 class SicenetRepository(private val service: SicenetService) {
 
+    // Variable para almacenar temporalmente la respuesta del último login exitoso.
+    // Se usa como respaldo si la petición de 'Perfil' falla, ya que el login suele traer los datos del alumno.
     private var cachedLoginResponse: String? = null
 
-    // [DATA TRANSFORMATION]
-    // Transforma la respuesta cruda (Raw String) en un objeto de dominio (LoginResult).
-    // Encapsula la lógica de validación de respuesta exitosa vs fallida.
+    /**
+     * [INICIO DE SESIÓN]
+     * Esta es una función SUSPENDIDA. Significa que se ejecuta dentro de una corrutina.
+     * No bloquea la aplicación mientras espera la respuesta del servidor.
+     * 
+     * @param user Matrícula del alumno.
+     * @param pass Contraseña del portal Sicenet.
+     * @return LoginResult indicando si fue Success (Éxito) o Error.
+     */
     suspend fun login(user: String, pass: String): LoginResult {
-        // Clear debug log on new login
-        com.example.marsphotos.data.DebugStorage.clear()
-        
+        // Llamada al servicio de red. Este método también es 'suspend' y corre en Dispatchers.IO
         val result = service.login(user, pass)
         
-        // DEBUG: Capture raw response
-        com.example.marsphotos.data.DebugStorage.updateResponse("LOGIN RAW:\n$result")
-        println("SicenetRepository: Login Raw Response: $result") 
+        println("SicenetRepository: Respuesta Cruda del Login: $result") 
 
-        if (result == null) return LoginResult.Error("Network Error or Empty Response")
+        if (result == null) return LoginResult.Error("Error de Red: El servidor no respondió.")
 
-        // CACHE: Save successful (or potential) response for fallback
+        // Cacheamos la respuesta por si necesitamos extraer el perfil de aquí más tarde
         cachedLoginResponse = result
 
-        // Check for HTML response
+        // VALIDACIÓN 1: El servidor a veces redirige a una página HTML de error
         if (result.trim().startsWith("<html", ignoreCase = true)) {
-             return LoginResult.Error("Error: El servidor respondió con HTML (posible bloqueo o error de URL). No se recibió XML.")
+             return LoginResult.Error("Error del Servidor: Se recibió HTML en lugar de XML. Posible bloqueo de sesión.")
         }
 
-        // Check for SOAP Fault
+        // VALIDACIÓN 2: Detectar fallos estructurales de SOAP (Protocolo de comunicación del servidor)
         if (result.contains(":Fault>", ignoreCase = true)) {
              val faultString = result.substringAfter("<faultstring>").substringBefore("</faultstring>")
-             return LoginResult.Error("SOAP Fault: $faultString")
+             return LoginResult.Error("Error del Servidor (SOAP): $faultString")
         }
 
-        // VALIDATION UPDATE: Check for JSON success inside the XML
+        // VALIDACIÓN 3: Verificar acceso concedido. Sicenet usa JSON embebido en XML.
+        // Buscamos la clave '"acceso":true' dentro de la cadena de texto.
         val isValid = result.contains("\"acceso\":true", ignoreCase = true) ||
                       result.contains("\"acceso\": true", ignoreCase = true) ||
                       result.contains("&quot;acceso&quot;:true", ignoreCase = true) ||
@@ -51,61 +62,66 @@ class SicenetRepository(private val service: SicenetService) {
         return if (isValid) {
             LoginResult.Success(result)
         } else {
-             // Check for empty/self-closing result (common for null returns/failed auth in some setups)
-             // Matches <accesoLoginResult /> or <accesoLoginResult/>
+             // Si el login falló, intentamos extraer el motivo del error del XML
              if (result.contains("<accesoLoginResult />") || result.contains("<accesoLoginResult/>")) {
-                 return LoginResult.Error("Login Failed: Check your credentials (Matricula/Password). Server returned empty.")
+                 return LoginResult.Error("Credenciales incorrectas: Verifica tu Matrícula o Contraseña.")
              }
 
-             // Extract failure reason if possible
             val failPattern = "<(?:\\w+:)?accesoLoginResult>(.*?)</(?:\\w+:)?accesoLoginResult>".toRegex(RegexOption.DOT_MATCHES_ALL)
             val match = failPattern.find(result)
 
             if (match != null) {
                 val content = match.groupValues[1]
-                LoginResult.Error("Auth Failed: $content")
+                LoginResult.Error("Acceso Denegado: $content")
             } else {
-                // Return a larger snippet to debug standard XML envelope issues
-                val snippet = result.take(500).replace("\n", " ") 
-                LoginResult.Error("Unknown structure: $snippet")
+                LoginResult.Error("Estructura de respuesta desconocida. Revisa los logs.")
             }
         }
     }
 
+    /**
+     * [OBTENER PERFIL]
+     * Obtiene la información académica del alumno.
+     * Utiliza una estrategia de respaldo: si falla la consulta directa al perfil,
+     * intenta extraer los datos de la respuesta del login que guardamos en caché.
+     */
     suspend fun getPerfil(): SicenetProfile? {
         var xmlResponse = service.getProfile()
         
-        // DEBUG: Capture raw response
-        com.example.marsphotos.data.DebugStorage.updateResponse("PROFILE RAW:\n${xmlResponse ?: "NULL"}")
-        println("SicenetRepository: Profile Raw Response: $xmlResponse") 
+        println("SicenetRepository: Respuesta Cruda del Perfil: $xmlResponse") 
 
-        // DETECT FAILURE & FALLBACK
-        // If getProfile failed (null, Fault, or HTML error) BUT we have a cached login response, use it!
+        // ESTRATEGIA DE RESPALDO (FALLBACK)
+        // Sicenet a veces bloquea la consulta de perfil justo después del login.
+        // Si detectamos fallo, usamos la caché del login.
         val isFailure = xmlResponse == null || 
                         xmlResponse.contains(":Fault>", ignoreCase = true) || 
-                        xmlResponse.contains("Server", ignoreCase = true) || // Capture "Server cannot access..."
+                        xmlResponse.contains("Server", ignoreCase = true) || 
                         xmlResponse.trim().startsWith("<html", ignoreCase = true)
 
         if (isFailure && !cachedLoginResponse.isNullOrEmpty()) {
-            println("SicenetRepository: getProfile failed. Falling back to Cached Login Response.")
-            com.example.marsphotos.data.DebugStorage.updateResponse("FALLBACK WARNING: 'getProfile' failed. Using Cached Login Response.")
+            println("SicenetRepository: Falló getProfile. Usando datos del Login guardados en caché.")
             xmlResponse = cachedLoginResponse
         }
 
         if (xmlResponse == null) return null
         
+        // Delegamos el procesamiento del texto a la función de parseo
         return parseProfileFromXml(xmlResponse)
     }
 
+    /**
+     * [PARSEAR PERFIL]
+     * Convierte el texto gigante retornado por el servidor en un objeto SicenetProfile limpio.
+     * Implementa lógica para manejar tanto respuestas XML como JSON embebido.
+     */
     private fun parseProfileFromXml(xml: String): SicenetProfile {
-        // 1. Try to unescape
+        // Limpiamos los caracteres escapados típicos de XML (&lt; -> <, &gt; -> >)
         var cleanXml = xml
         if (cleanXml.contains("&lt;") && cleanXml.contains("&gt;")) {
             cleanXml = cleanXml.replace("&lt;", "<").replace("&gt;", ">")
         }
 
-        // 2. Identify format (XML vs JSON)
-        // Check for JSON-like keys in the response
+        // Identificamos el formato: Si contiene '":' es probable que tenga JSON embebido
         val isJson = cleanXml.contains("\":") || cleanXml.contains("\": ")
 
         val name: String
@@ -117,92 +133,52 @@ class SicenetRepository(private val service: SicenetService) {
         val status: String
 
         if (isJson) {
-            // Extract using regex for JSON keys
-            // Try multiple keys for robustness (Login response uses strPrefix often)
+            // EXTRACCIÓN JSON: Usamos expresiones regulares para buscar las claves.
+            // Buscamos múltiples variantes de nombres de claves porque el servidor no es consistente.
             val n1 = extractJson(cleanXml, "nombre")
             val n2 = extractJson(cleanXml, "strNombre")
             val n3 = extractJson(cleanXml, "nombreCompleto")
-            name = listOf(n1, n2, n3).firstOrNull { it != "Unknown" } ?: "Unknown"
+            name = listOf(n1, n2, n3).firstOrNull { it != "Unknown" } ?: "Desconocido"
 
             val e1 = extractJson(cleanXml, "matricula")
             val e2 = extractJson(cleanXml, "strMatricula")
-            enrollment = listOf(e1, e2).firstOrNull { it != "Unknown" } ?: "Unknown"
+            enrollment = listOf(e1, e2).firstOrNull { it != "Unknown" } ?: "Desconocido"
 
             val c1 = extractJson(cleanXml, "carrera")
             val c2 = extractJson(cleanXml, "strCarrera")
-            val c3 = extractJson(cleanXml, "programa")
-            career = listOf(c1, c2, c3).firstOrNull { it != "Unknown" } ?: "Unknown"
-            
-            // FORCE DEBUGGING: If name is unknown, put raw json in name to see it
-            // val finalName = if (name == "Unknown") "DEBUG: ${cleanXml.take(150)}" else name
+            career = listOf(c1, c2).firstOrNull { it != "Unknown" } ?: "Desconocida"
             
             val st1 = extractJson(cleanXml, "estatus")
             val st2 = extractJson(cleanXml, "situacion")
-            status = listOf(st1, st2).firstOrNull { it != "Unknown" } ?: "Unknown"
+            status = listOf(st1, st2).firstOrNull { it != "Unknown" } ?: "Desconocido"
 
             val sp1 = extractJson(cleanXml, "especialidad")
             val sp2 = extractJson(cleanXml, "strEspecialidad")
-            specialty = listOf(sp1, sp2).firstOrNull { it != "Unknown" } ?: "Unknown"
+            specialty = listOf(sp1, sp2).firstOrNull { it != "Unknown" } ?: "Desconocida"
 
-            // Semester variations
-            val s1 = extractJson(cleanXml, "semestre")
-            val s2 = extractJson(cleanXml, "semestreActual")
-            val s3 = extractJson(cleanXml, "periodo")
-            val s4 = extractJson(cleanXml, "semActual") // Found in debug keys
-            semester = listOf(s1, s2, s3, s4).firstOrNull { it != "Unknown" } ?: "Unknown"
+            semester = extractJson(cleanXml, "semestre").let { if(it == "Unknown") extractJson(cleanXml, "semActual") else it }
 
-            // Credits variations
-            val cr1 = extractJson(cleanXml, "creditosAcumulados")
-            val cr2 = extractJson(cleanXml, "creditos")
-            val cr3 = extractJson(cleanXml, "creditosAprobados")
-            val cr4 = extractJson(cleanXml, "totalCreditos")
-            val cr5 = extractJson(cleanXml, "cdtosAcumulados") // Found in debug keys
-            earnedCredits = listOf(cr1, cr2, cr3, cr4, cr5).firstOrNull { it != "Unknown" } ?: "Unknown"
-
-            // DEBUG: If still unknown, append ALL keys found in the JSON to help us find the right one
-            val allKeys = getAllJsonKeys(cleanXml)
-            val debugSuffix = if (allKeys.isNotEmpty()) " (Avail: ${allKeys.joinToString(",")})" else ""
+            earnedCredits = extractJson(cleanXml, "cdtosAcumulados").let { if(it == "Unknown") extractJson(cleanXml, "creditos") else it }
 
             return SicenetProfile(
                 name = name,
                 enrollmentId = enrollment,
                 career = career,
-                semester = if (semester == "Unknown") "Unknown$debugSuffix" else semester,
+                semester = semester,
                 specialty = specialty,
                 earnedCredits = earnedCredits,
-                status = status,
-                rawResponse = xml
+                status = status
             )
 
         } else {
-            // Standard XML extraction
-            // Also try strPrefix for XML just in case
-            val n1 = extractTag(cleanXml, "nombre")
-            val n2 = extractTag(cleanXml, "strNombre")
-            name = if (n1 != "Unknown") n1 else n2
-            
-            val e1 = extractTag(cleanXml, "matricula")
-            val e2 = extractTag(cleanXml, "strMatricula")
-            enrollment = if (e1 != "Unknown") e1 else e2
-
+            // EXTRACCIÓN XML: Buscamos etiquetas tradicionales <etiqueta>valor</etiqueta>
+            name = extractTag(cleanXml, "nombre").let { if(it == "Unknown") extractTag(cleanXml, "strNombre") else it }
+            enrollment = extractTag(cleanXml, "matricula").let { if(it == "Unknown") extractTag(cleanXml, "strMatricula") else it }
             career = extractTag(cleanXml, "carrera")
             status = extractTag(cleanXml, "estatus")
             specialty = extractTag(cleanXml, "especialidad")
-            
-            // XML fallback variations
-            // Semestre variations based on screenshot and common SOAP patterns
-            val s1 = extractTag(cleanXml, "semestre")
-            val s2 = extractTag(cleanXml, "semestreActual")
-            val s3 = extractTag(cleanXml, "semActual") 
-            semester = listOf(s1, s2, s3).firstOrNull { it != "Unknown" } ?: "Unknown"
-
-            // Credits variations based on screenshot "Cdts. Reunidos"
-            val c1 = extractTag(cleanXml, "creditosAcumulados")
-            val c2 = extractTag(cleanXml, "creditos")
-            val c3 = extractTag(cleanXml, "creditosReunidos")
-            val c4 = extractTag(cleanXml, "cdtsReunidos")
-             val c5 = extractTag(cleanXml, "totalCreditos")
-            earnedCredits = listOf(c1, c2, c3, c4, c5).firstOrNull { it != "Unknown" } ?: "Unknown"
+            semester = extractTag(cleanXml, "semestre").let { if(it == "Unknown") extractTag(cleanXml, "semActual") else it }
+            earnedCredits = extractTag(cleanXml, "cdtsReunidos").let { if(it == "Unknown") extractTag(cleanXml, "creditosAcumulados") else it }
             
              return SicenetProfile(
                 name = name,
@@ -211,15 +187,17 @@ class SicenetRepository(private val service: SicenetService) {
                 semester = semester,
                 specialty = specialty,
                 earnedCredits = earnedCredits,
-                status = status,
-                rawResponse = xml
+                status = status
             )
         }
     }
 
+    /**
+     * Función interna que usa RegEx para extraer el contenido de una etiqueta XML.
+     * Ignora mayúsculas/minúsculas y prefijos de espacio de nombres.
+     */
     private fun extractTag(xml: String, tagName: String): String {
         try {
-            // Updated to be CASE INSENSITIVE
             val pattern = "<(?:\\w+:)?$tagName>(.*?)</(?:\\w+:)?$tagName>".toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
             val match = pattern.find(xml)
             return match?.groupValues?.get(1)?.trim() ?: "Unknown"
@@ -228,23 +206,15 @@ class SicenetRepository(private val service: SicenetService) {
         }
     }
 
+    /**
+     * Función interna que usa RegEx para extraer el valor de una clave en una cadena JSON cruda.
+     */
     private fun extractJson(text: String, key: String): String {
         try {
-            // Matches "key": "value" or "key": 123 ignoring whitespace and quotes around value
             val pattern = "\"$key\"\\s*:\\s*\"?([^\"},]+)\"?".toRegex(RegexOption.IGNORE_CASE)
             return pattern.find(text)?.groupValues?.get(1)?.trim() ?: "Unknown"
         } catch (e: Exception) {
             return "Error"
-        }
-    }
-
-    private fun getAllJsonKeys(text: String): List<String> {
-        try {
-            // Find all strings followed by a colon
-            val pattern = "\"([^\"]+)\"\\s*:".toRegex()
-            return pattern.findAll(text).map { it.groupValues[1] }.toList()
-        } catch (e: Exception) {
-            return emptyList()
         }
     }
 }

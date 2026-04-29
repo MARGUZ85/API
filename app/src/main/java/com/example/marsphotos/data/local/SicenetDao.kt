@@ -5,17 +5,28 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.InternalSerializationApi
 
+/**
+ * [CAPA DE DATOS - DAO (Data Access Object)]
+ * ¡Esta es la Base de Datos Local! Usamos "Room" (la tecnología oficial de Android).
+ * En lugar de escribir código SQL manual complicado, solo definimos "Funciones" y Room
+ * se encarga de crear las tablas de SQLite y guardar las cosas adentro de nuestro teléfono celular.
+ */
+@OptIn(kotlinx.serialization.InternalSerializationApi::class)
 @Dao
 interface SicenetDao {
 
-    // -------------------------
-    // Academic Load
-    // -------------------------
+    // --- CARGA ACADÉMICA ---
 
+    @OptIn(InternalSerializationApi::class)
     @Query("SELECT * FROM academic_load")
     fun getAcademicLoad(): Flow<List<AcademicLoadEntity>>
 
+    /**
+     * Función SUSPENDIDA para insertar datos. Solo se puede llamar desde una corrutina.
+     */
+    @OptIn(InternalSerializationApi::class)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAcademicLoad(load: List<AcademicLoadEntity>)
 
@@ -23,13 +34,13 @@ interface SicenetDao {
     suspend fun clearAcademicLoad()
 
 
-    // -------------------------
-    // Cardex
-    // -------------------------
+    // --- KARDEX (CARDEX) ---
 
+    @OptIn(InternalSerializationApi::class)
     @Query("SELECT * FROM cardex ORDER BY semestre DESC")
     fun getCardex(): Flow<List<CardexEntity>>
 
+    @OptIn(InternalSerializationApi::class)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCardex(cardex: List<CardexEntity>)
 
@@ -37,9 +48,7 @@ interface SicenetDao {
     suspend fun clearCardex()
 
 
-    // -------------------------
-    // Unit Grades
-    // -------------------------
+    // --- CALIFICACIONES POR UNIDAD ---
 
     @Query("SELECT * FROM unit_grades")
     fun getUnitGrades(): Flow<List<UnitGradesEntity>>
@@ -51,9 +60,7 @@ interface SicenetDao {
     suspend fun clearUnitGrades()
 
 
-    // -------------------------
-    // Final Grades
-    // -------------------------
+    // --- CALIFICACIONES FINALES ---
 
     @Query("SELECT * FROM final_grades")
     fun getFinalGrades(): Flow<List<FinalGradesEntity>>
@@ -65,9 +72,7 @@ interface SicenetDao {
     suspend fun clearFinalGrades()
 
 
-    // -------------------------
-    // Metadata (Last Update)
-    // -------------------------
+    // --- METADATOS (ÚLTIMA ACTUALIZACIÓN) ---
 
     @Query("SELECT timestamp FROM last_update_log WHERE feature = :feature LIMIT 1")
     fun getLastUpdate(feature: String): Flow<Long?>

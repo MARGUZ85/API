@@ -80,8 +80,6 @@ fun MarsPhotosApp() {
                                     sicenetViewModel.navigateTo(SicenetScreen.GradesUnits)
                                 "GRADES_FINAL" ->
                                     sicenetViewModel.navigateTo(SicenetScreen.GradesFinal)
-                                "DEBUG" ->
-                                    sicenetViewModel.navigateTo(SicenetScreen.Debug)
                             }
                         }
                     )
@@ -150,12 +148,6 @@ fun MarsPhotosApp() {
                         onBack = {
                             sicenetViewModel.navigateTo(SicenetScreen.Menu)
                         }
-                    )
-                }
-                SicenetScreen.Debug -> {
-                    DebugScreen(
-                        viewModel = sicenetViewModel,
-                        onBack = { sicenetViewModel.navigateTo(SicenetScreen.Menu) }
                     )
                 }
             }

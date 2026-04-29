@@ -9,7 +9,7 @@ import com.example.marsphotos.data.SicenetRepository
 import com.example.marsphotos.network.SicenetService
 
 class SicenetWorkerFactory(
-    private val sicenetService: SicenetService, // Access via SicenetRepository or directly? AppContainer doesn't expose Service publically.
+    private val sicenetService: SicenetService, // ¿Acceder a través del Repositorio o directamente? AppContainer no expone el Servicio públicamente.
     private val sicenetLocalRepository: SicenetLocalRepository
 ) : WorkerFactory() {
 
@@ -18,8 +18,8 @@ class SicenetWorkerFactory(
         workerClassName: String,
         workerParameters: WorkerParameters
     ): ListenableWorker? {
-        // We will implement the workers next. 
-        // For now, prepare the factory logic.
+        // Implementaremos los workers en archivos separados. 
+        // Por ahora, preparamos la lógica de la fábrica o 'Factory'.
         return when (workerClassName) {
             "com.example.marsphotos.worker.SicenetLoginWorker" -> {
                 SicenetLoginWorker(appContext, workerParameters, sicenetService, sicenetLocalRepository)

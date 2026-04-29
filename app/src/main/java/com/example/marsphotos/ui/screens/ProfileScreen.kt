@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import com.example.marsphotos.data.model.SicenetProfile
 
 /**
- * [UI LAYER - VIEW]
  * Esta función Composable define cómo se ve la pantalla de Perfil.
  * Es una función "pura" que solo se encarga de pintar los datos que recibe.
  * No realiza lógica de negocio ni llamadas de red.

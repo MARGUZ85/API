@@ -1,17 +1,21 @@
 package com.example.marsphotos.worker
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.example.marsphotos.data.SicenetLocalRepository
 import com.example.marsphotos.data.SicenetParser
 import com.example.marsphotos.network.SicenetService
+import kotlinx.serialization.InternalSerializationApi
 
-import android.util.Log
-
-// --- WORKER 1: Network Operations (Login or Fetch) ---
-
+/**
+ * [TRABAJO EN SEGUNDO PLANO - LOGIN]
+ * Este Worker se encarga de realizar el inicio de sesión y obtener el perfil básico.
+ * Al usar CoroutineWorker, permite realizar estas operaciones de red de forma asíncrona.
+ */
 class SicenetLoginWorker(
     context: Context,
     params: WorkerParameters,
@@ -19,40 +23,47 @@ class SicenetLoginWorker(
     private val sicenetLocalRepository: SicenetLocalRepository
 ) : CoroutineWorker(context, params) {
 
+    // doWork() es la función que ejecuta WorkManager en un hilo secundario.
     override suspend fun doWork(): Result {
         val user = inputData.getString("USER") ?: return Result.failure()
         val pass = inputData.getString("PASS") ?: return Result.failure()
 
-        try {
-            // 1. Login
+        return try {
+            // 1. Intentar inicio de sesión
             val loginResult = sicenetService.login(user, pass)
             
-            // Validate Login
+            // Verificamos si la respuesta contiene señales de éxito
             if (loginResult == null || !loginResult.contains("true", ignoreCase = true)) {
-                return Result.failure(Data.Builder().putString("ERROR", "Login Failed").build())
+                return Result.failure(workDataOf("ERROR" to "Fallo en el inicio de sesión: Credenciales incorrectas"))
             }
 
-            // 2. Get Profile (As per requirement "a)")
+            // 2. Intentar obtener el perfil (paso requerido para validar la sesión completa)
             val profileResult = sicenetService.getProfile()
             
             if (profileResult == null) {
-                return Result.failure(Data.Builder().putString("ERROR", "Failed to get Profile").build())
+                return Result.failure(workDataOf("ERROR" to "No se pudo recuperar la información del perfil"))
             }
 
-            // Pass Profile Data to Next Worker
-            val output = Data.Builder()
-                .putString("KEY_TYPE", "PROFILE")
-                .putString("KEY_DATA", profileResult)
-                .build()
+            // Pasamos los datos del perfil como salida para que otros Workers o la UI puedan verlos
+            val output = workDataOf(
+                "KEY_TYPE" to "PROFILE",
+                "KEY_DATA" to profileResult
+            )
 
-            return Result.success(output)
+            Result.success(output)
 
         } catch (e: Exception) {
-            return Result.failure()
+            Log.e("SicenetLoginWorker", "Error durante login o perfil: ${e.message}")
+            Result.failure(workDataOf("ERROR" to (e.message ?: "Error desconocido en LoginWorker")))
         }
     }
 }
 
+/**
+ * [TRABAJO EN SEGUNDO PLANO - SINCRONIZACIÓN]
+ * Este Worker descarga y guarda datos específicos (Kardex, Carga, Calificaciones).
+ * Se ejecuta de forma independiente para no bloquear la aplicación.
+ */
 class SicenetSyncWorker(
     context: Context,
     params: WorkerParameters,
@@ -60,10 +71,17 @@ class SicenetSyncWorker(
     private val sicenetLocalRepository: SicenetLocalRepository
 ) : CoroutineWorker(context, params) {
 
+    /**
+     * Tarea principal de sincronización.
+     * WorkManager garantiza que esto se ejecute incluso si el usuario sale de la app.
+     */
+    @OptIn(InternalSerializationApi::class)
     override suspend fun doWork(): Result {
+        // Obtenemos qué característica (feature) se debe sincronizar
         val feature = inputData.getString("FEATURE") ?: return Result.failure()
 
         return try {
+            // 1. Descargar los datos crudos (XML) del servidor según la característica
             val resultXml = when (feature) {
                 "LOAD" -> sicenetService.getCargaAcademica()
                 "CARDEX" -> sicenetService.getCardex()
@@ -73,16 +91,10 @@ class SicenetSyncWorker(
             }
 
             if (resultXml == null) {
-                com.example.marsphotos.data.DebugStorage.updateResponse("ERROR: Network/Service returned null for $feature")
-                Log.e("SicenetWorker", "ResultXML is null for $feature")
-                return Result.failure(Data.Builder().putString("ERROR", "Network Error").build())
+                return Result.failure(workDataOf("ERROR" to "Error de red: No se recibió respuesta para $feature"))
             }
 
-            // DEBUG: Save response
-            com.example.marsphotos.data.DebugStorage.updateResponse("Feature: $feature\n\n$resultXml")
-            Log.d("SicenetResponse", "Feature: $feature | XML: $resultXml")
-
-            // Parse and Save directly
+            // 2. Parsear y Guardar los datos en la base de datos local
             when (feature) {
                 "LOAD" -> {
                     val entities = SicenetParser.parseAcademicLoad(resultXml)
@@ -101,13 +113,12 @@ class SicenetSyncWorker(
                     sicenetLocalRepository.saveFinalGrades(entities)
                 }
             }
-
+            // Si llegamos aquí, la sincronización fue exitosa
             Result.success()
 
         } catch (e: Exception) {
-            e.printStackTrace()
-            com.example.marsphotos.data.DebugStorage.updateResponse("EXCEPTION: ${e.message}")
-            Result.failure()
+            Log.e("SicenetSyncWorker", "Error sincronizando $feature: ${e.message}")
+            Result.failure(workDataOf("ERROR" to (e.message ?: "Error desconocido en SyncWorker")))
         }
     }
 }

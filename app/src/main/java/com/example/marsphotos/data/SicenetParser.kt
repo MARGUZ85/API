@@ -4,20 +4,44 @@ import com.example.marsphotos.data.local.AcademicLoadEntity
 import com.example.marsphotos.data.local.CardexEntity
 import com.example.marsphotos.data.local.FinalGradesEntity
 import com.example.marsphotos.data.local.UnitGradesEntity
+import kotlinx.serialization.InternalSerializationApi
 import org.json.JSONArray
 
+/**
+ * [CAPA DE DATOS - PARSER (Extractores de Texto)]
+ * Objeto encargado de procesar las respuestas del servidor de Sicenet.
+ */
+@OptIn(InternalSerializationApi::class)
 object SicenetParser {
 
+    private fun org.json.JSONObject.optStringSafe(key: String): String {
+        if (has(key)) return optString(key)
+        val pascal = key.replaceFirstChar { it.uppercase() }
+        if (has(pascal)) return optString(pascal)
+        if (has(key.uppercase())) return optString(key.uppercase())
+        val camel = key.replaceFirstChar { it.lowercase() }
+        if (has(camel)) return optString(camel)
+        if (has("str$pascal")) return optString("str$pascal")
+        return ""
+    }
+
+    private fun org.json.JSONObject.optIntSafe(key: String): Int {
+        if (has(key)) return optInt(key)
+        val pascal = key.replaceFirstChar { it.uppercase() }
+        if (has(pascal)) return optInt(pascal)
+        return 0
+    }
+
+    @OptIn(InternalSerializationApi::class)
     fun parseAcademicLoad(xml: String): List<AcademicLoadEntity> {
-        // Try JSON first
         var entities = parseJsonAcademicLoad(xml)
         if (entities.isEmpty()) {
-            // Fallback to XML
             entities = parseXmlAcademicLoad(xml)
         }
         return entities
     }
 
+    @OptIn(InternalSerializationApi::class)
     private fun parseJsonAcademicLoad(xml: String): List<AcademicLoadEntity> {
         val entities = mutableListOf<AcademicLoadEntity>()
         try {
@@ -28,19 +52,19 @@ object SicenetParser {
                     val obj = jsonArray.getJSONObject(i)
                     entities.add(
                         AcademicLoadEntity(
-                            materia = obj.optString("materia", ""),
-                            grupo = obj.optString("grupo", ""),
-                            profesor = obj.optString("profesor", ""),
-                            lunes = obj.optString("lunes", ""),
-                            martes = obj.optString("martes", ""),
-                            miercoles = obj.optString("miercoles", ""),
-                            jueves = obj.optString("jueves", ""),
-                            viernes = obj.optString("viernes", ""),
-                            sabado = obj.optString("sabado", ""),
-                            domingo = obj.optString("domingo", ""),
-                            creditos = obj.optInt("creditos", 0),
-                            aula = obj.optString("aula", ""),
-                            estadoMateria = obj.optString("estado", "")
+                            materia = obj.optStringSafe("materia"),
+                            grupo = obj.optStringSafe("grupo"),
+                            profesor = obj.optStringSafe("profesor"),
+                            lunes = obj.optStringSafe("lunes"),
+                            martes = obj.optStringSafe("martes"),
+                            miercoles = obj.optStringSafe("miercoles"),
+                            jueves = obj.optStringSafe("jueves"),
+                            viernes = obj.optStringSafe("viernes"),
+                            sabado = obj.optStringSafe("sabado"),
+                            domingo = obj.optStringSafe("domingo"),
+                            creditos = obj.optIntSafe("creditos"),
+                            aula = obj.optStringSafe("aula"),
+                            estadoMateria = obj.optStringSafe("estado")
                         )
                     )
                 }
@@ -51,26 +75,10 @@ object SicenetParser {
         return entities
     }
 
+    @OptIn(InternalSerializationApi::class)
     private fun parseXmlAcademicLoad(xml: String): List<AcademicLoadEntity> {
         val entities = mutableListOf<AcademicLoadEntity>()
         try {
-            // Very basic XML scraping logic based on typical Sicenet XML tags
-            // We split by a common closing tag to separate items, e.g., </CargaRegular> or similar
-            // Since we don't know the exact row tag, we'll try to match repeating blocks.
-            // A generic approach: Find all occurrences of <materia>...</materia> and extract widely.
-            // BUT, splitting by a closing tag is safer to group fields.
-            
-            // Heuristic: If we don't know the Item Tag, we can try to find blocks that contain "materia".
-            // Let's assume the standard NewDataSet/Table structure.
-            
-            // Regex to find blocks. Let's try to capture each "row".
-            // If we can't easily find rows, we'll iterate through all matches of "materia" and try to find nearby neighbors.
-            // BETTER: Split by <materia> and parse the chunk? No, properties might be in any order.
-            
-            // Let's try splitting by the closing tag of the main item. Often </Table> or </Carga>.
-            // If unknown, we can simply findAll on specific properties, assuming they are in order!
-            // This is risky but often works for simple lists if lists are synchronous.
-            
             val materias = extractAllTags(xml, "materia")
             val grupos = extractAllTags(xml, "grupo")
             val profesores = extractAllTags(xml, "profesor")
@@ -85,7 +93,6 @@ object SicenetParser {
             val aulas = extractAllTags(xml, "aula")
             val estados = extractAllTags(xml, "estado")
 
-            // Assuming all lists are same size. If not, we take the min size or safe bounds.
             val size = materias.size
             for (i in 0 until size) {
                 entities.add(
@@ -112,7 +119,6 @@ object SicenetParser {
         return entities
     }
 
-
     fun parseCardex(xml: String): List<CardexEntity> {
         var entities = parseJsonCardex(xml)
         if (entities.isEmpty()) {
@@ -131,14 +137,14 @@ object SicenetParser {
                     val obj = jsonArray.getJSONObject(i)
                     entities.add(
                         CardexEntity(
-                            materia = obj.optString("materia", ""),
-                            clave = obj.optString("clave", ""),
-                            creditos = obj.optInt("creditos", 0),
-                            calificacion = obj.optString("calif", "NA"),
-                            evaluacion = obj.optString("tipoEval", ""),
-                            semestre = obj.optInt("semestre", 0),
-                            anio = obj.optInt("periodo", 0),
-                            observacion = obj.optString("observacion", "")
+                            materia = obj.optStringSafe("materia"),
+                            clave = obj.optStringSafe("clave"),
+                            creditos = obj.optIntSafe("creditos"),
+                            calificacion = obj.optStringSafe("calif"),
+                            evaluacion = obj.optStringSafe("tipoEval"),
+                            semestre = obj.optIntSafe("semestre"),
+                            anio = obj.optIntSafe("periodo"),
+                            observacion = obj.optStringSafe("observacion")
                         )
                     )
                 }
@@ -159,9 +165,8 @@ object SicenetParser {
             val evaluacion = extractAllTags(xml, "tipoEval")
             val semestres = extractAllTags(xml, "semestre")
             val periodos = extractAllTags(xml, "periodo")
-            val observaciones = extractAllTags(xml, "observacion") // Sometimes 'obs'
+            val observaciones = extractAllTags(xml, "observacion") 
 
-            // Try fallback for 'calif' -> 'calificacion'
             val finalCalifs = if (califs.isEmpty()) extractAllTags(xml, "calificacion") else califs
 
             val size = materias.size
@@ -185,7 +190,6 @@ object SicenetParser {
         return entities
     }
 
-
     fun parseUnitGrades(xml: String): List<UnitGradesEntity> {
         var entities = parseJsonUnitGrades(xml)
         if (entities.isEmpty()) {
@@ -204,22 +208,23 @@ object SicenetParser {
                     val obj = jsonArray.getJSONObject(i)
                     entities.add(
                         UnitGradesEntity(
-                            materia = obj.optString("materia", ""),
-                            u1 = obj.optString("c1", ""),
-                            u2 = obj.optString("c2", ""),
-                            u3 = obj.optString("c3", ""),
-                            u4 = obj.optString("c4", ""),
-                            u5 = obj.optString("c5", ""),
-                            u6 = obj.optString("c6", ""),
-                            u7 = obj.optString("c7", ""),
-                            u8 = obj.optString("c8", ""),
-                            u9 = obj.optString("c9", ""),
-                            u10 = obj.optString("c10", ""),
-                            u11 = obj.optString("c11", ""),
-                            u12 = obj.optString("c12", ""),
-                            u13 = obj.optString("c13", ""),
-                            act = obj.optString("act", ""),
-                            pf = obj.optString("prom", "")
+                            materia = obj.optStringSafe("materia"),
+                            profesor = obj.optStringSafe("profesor").ifEmpty { obj.optStringSafe("docente") },
+                            u1 = obj.optStringSafe("c1"),
+                            u2 = obj.optStringSafe("c2"),
+                            u3 = obj.optStringSafe("c3"),
+                            u4 = obj.optStringSafe("c4"),
+                            u5 = obj.optStringSafe("c5"),
+                            u6 = obj.optStringSafe("c6"),
+                            u7 = obj.optStringSafe("c7"),
+                            u8 = obj.optStringSafe("c8"),
+                            u9 = obj.optStringSafe("c9"),
+                            u10 = obj.optStringSafe("c10"),
+                            u11 = obj.optStringSafe("c11"),
+                            u12 = obj.optStringSafe("c12"),
+                            u13 = obj.optStringSafe("c13"),
+                            act = obj.optStringSafe("act"),
+                            pf = obj.optStringSafe("prom")
                         )
                     )
                 }
@@ -234,10 +239,10 @@ object SicenetParser {
         val entities = mutableListOf<UnitGradesEntity>()
         try {
             val materias = extractAllTags(xml, "materia")
+            val profesores = extractAllTags(xml, "profesor").ifEmpty { extractAllTags(xml, "docente") }
             val c1 = extractAllTags(xml, "c1")
             val c2 = extractAllTags(xml, "c2")
             val c3 = extractAllTags(xml, "c3")
-            // Assuming up to 13 units? Just doing basic ones usually seen.
             val prom = extractAllTags(xml, "prom")
 
             val size = materias.size
@@ -245,10 +250,11 @@ object SicenetParser {
                 entities.add(
                     UnitGradesEntity(
                         materia = materias.getOrElse(i) { "" },
+                        profesor = profesores.getOrElse(i) { "" },
                         u1 = c1.getOrElse(i) { "" },
                         u2 = c2.getOrElse(i) { "" },
                         u3 = c3.getOrElse(i) { "" },
-                        u4 = "", // abbreviated for brevity in fallback, can add more if needed
+                        u4 = "", 
                         u5 = "",
                         u6 = "",
                         u7 = "",
@@ -269,7 +275,6 @@ object SicenetParser {
         return entities
     }
 
-
     fun parseFinalGrades(xml: String): List<FinalGradesEntity> {
         var entities = parseJsonFinalGrades(xml)
         if (entities.isEmpty()) {
@@ -288,9 +293,10 @@ object SicenetParser {
                     val obj = jsonArray.getJSONObject(i)
                     entities.add(
                         FinalGradesEntity(
-                            materia = obj.optString("materia", ""),
-                            calif = obj.optString("calif", ""),
-                            observacion = obj.optString("observacion", "")
+                            materia = obj.optStringSafe("materia"),
+                            profesor = obj.optStringSafe("profesor").ifEmpty { obj.optStringSafe("docente") },
+                            calif = obj.optStringSafe("calif"),
+                            observacion = obj.optStringSafe("observacion")
                         )
                     )
                 }
@@ -305,6 +311,7 @@ object SicenetParser {
         val entities = mutableListOf<FinalGradesEntity>()
         try {
             val materias = extractAllTags(xml, "materia")
+            val profesores = extractAllTags(xml, "profesor").ifEmpty { extractAllTags(xml, "docente") }
             val califs = extractAllTags(xml, "calif")
             val observaciones = extractAllTags(xml, "observacion")
 
@@ -313,6 +320,7 @@ object SicenetParser {
                 entities.add(
                     FinalGradesEntity(
                         materia = materias.getOrElse(i) { "" },
+                        profesor = profesores.getOrElse(i) { "" },
                         calif = califs.getOrElse(i) { "" },
                         observacion = observaciones.getOrElse(i) { "" }
                     )
@@ -324,20 +332,17 @@ object SicenetParser {
         return entities
     }
 
-
-    // --- HELPER FUNCTIONS ---
-
     private fun extractJsonContent(xml: String): String {
+        val start = xml.indexOf("[")
+        val end = xml.lastIndexOf("]")
+        if (start != -1 && end != -1 && start < end) {
+             return xml.substring(start, end + 1)
+        }
         val startTags = listOf("Result>", "return>")
         for (tag in startTags) {
             if (xml.contains(tag)) {
                 return xml.substringAfter(tag).substringBefore("</")
             }
-        }
-        val start = xml.indexOf("[")
-        val end = xml.lastIndexOf("]")
-        if (start != -1 && end != -1 && start < end) {
-            return xml.substring(start, end + 1)
         }
         return ""
     }
@@ -345,7 +350,6 @@ object SicenetParser {
     private fun extractAllTags(xml: String, tagName: String): List<String> {
         val list = mutableListOf<String>()
         try {
-            // Match <tagName>value</tagName> case insensitive
             val pattern = "<(?:\\w+:)?$tagName>(.*?)</(?:\\w+:)?$tagName>".toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
             val matches = pattern.findAll(xml)
             matches.forEach { 

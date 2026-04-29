@@ -5,6 +5,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
+import kotlinx.serialization.InternalSerializationApi
+
+@OptIn(InternalSerializationApi::class)
 @Database(
     entities = [
         AcademicLoadEntity::class,
@@ -13,7 +16,7 @@ import androidx.room.RoomDatabase
         FinalGradesEntity::class,
         LastUpdateEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SicenetDatabase : RoomDatabase() {

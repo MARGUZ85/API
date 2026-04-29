@@ -1,6 +1,8 @@
 package com.example.marsphotos.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -15,6 +17,7 @@ import com.example.marsphotos.ui.SicenetViewModel
 import androidx.compose.foundation.background
 import androidx.compose.material3.Divider
 import androidx.compose.ui.unit.sp
+import kotlinx.serialization.InternalSerializationApi
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -39,45 +42,9 @@ fun SicenetMenuScreen(
         MenuButton("Calif. Por Unidades") { onOptionSelected("GRADES_UNITS") }
         Spacer(Modifier.height(16.dp))
         MenuButton("Calif. Finales") { onOptionSelected("GRADES_FINAL") }
-        Spacer(Modifier.height(32.dp))
-        Button(
-            onClick = { onOptionSelected("DEBUG") },
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-        ) {
-            Text("Ver Respuesta Servidor (Debug)")
-        }
     }
 }
 
-@Composable
-fun DebugScreen(
-    viewModel: SicenetViewModel,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val response by viewModel.lastResponse.collectAsState()
-
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Text("Respuesta del Servidor (DEBUG)", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
-        Button(onClick = onBack) {
-            Text("Regresar")
-        }
-        Spacer(Modifier.height(8.dp))
-        
-        androidx.compose.foundation.lazy.LazyColumn {
-            item {
-                androidx.compose.foundation.text.selection.SelectionContainer {
-                    Text(
-                        text = response.ifEmpty { "Sin respuesta capturada aún." },
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun MenuButton(text: String, onClick: () -> Unit) {
@@ -130,6 +97,7 @@ fun SyncStatus(
     }
 }
 
+@OptIn(InternalSerializationApi::class)
 @Composable
 fun CargaAcademicaScreen(
     viewModel: SicenetViewModel,
@@ -162,48 +130,60 @@ fun CargaAcademicaScreen(
         Text("Materias: ${load.size}", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
 
-        // Table Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color(0xFF2E7D32))
-                .padding(4.dp)
-        ) {
-            TableCell(text = "MATERIA", weight = 2f, isHeader = true)
-            TableCell(text = "GPO", weight = 0.5f, isHeader = true)
-            TableCell(text = "PROFESOR", weight = 1.5f, isHeader = true)
-            TableCell(text = "HORARIO", weight = 1.5f, isHeader = true)
-            TableCell(text = "AULA", weight = 0.5f, isHeader = true)
-        }
 
-        LazyColumn {
-            items(load) { item ->
+        // Área de tabla con desplazamiento (scroll)
+        Box(
+            modifier = Modifier
+                .weight(1f) // Ocupa el espacio restante, empujando el botón hacia abajo
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+        ) {
+            Column(modifier = Modifier.width(1000.dp)) { // Ancho fijo grande para permitir el desplazamiento horizontal
+                // Encabezado de la Tabla
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .background(androidx.compose.ui.graphics.Color(0xFF2E7D32))
+                        .padding(4.dp)
                 ) {
-                    TableCell(text = item.materia, weight = 2f)
-                    TableCell(text = item.grupo, weight = 0.5f)
-                    TableCell(text = item.profesor, weight = 1.5f)
-                    TableCell(
-                        text = "${item.lunes} ${item.martes} ${item.miercoles} ${item.jueves} ${item.viernes}", 
-                        weight = 1.5f
-                    )
-                    TableCell(text = item.aula, weight = 0.5f)
+                    TableCell(text = "MATERIA", weight = 2f, isHeader = true)
+                    TableCell(text = "GPO", weight = 0.5f, isHeader = true)
+                    TableCell(text = "PROFESOR", weight = 1.5f, isHeader = true)
+                    TableCell(text = "HORARIO", weight = 1.5f, isHeader = true)
+                    TableCell(text = "AULA", weight = 0.5f, isHeader = true)
                 }
-                Divider(thickness = 0.5.dp, color = androidx.compose.ui.graphics.Color.LightGray)
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(load) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            TableCell(text = item.materia, weight = 2f)
+                            TableCell(text = item.grupo, weight = 0.5f)
+                            TableCell(text = item.profesor, weight = 1.5f)
+                            TableCell(
+                                text = "${item.lunes} ${item.martes} ${item.miercoles} ${item.jueves} ${item.viernes}", 
+                                weight = 1.5f
+                            )
+                            TableCell(text = item.aula, weight = 0.5f)
+                        }
+                        Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(8.dp))
 
-        Button(onClick = onBack) {
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("Regresar")
         }
     }
 }
 
+@OptIn(InternalSerializationApi::class)
 @Composable
 fun CardexScreen(
     viewModel: SicenetViewModel,
@@ -234,42 +214,53 @@ fun CardexScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Table Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color(0xFF2E7D32)) // Sicenet Green
-                .padding(4.dp)
-        ) {
-            TableCell(text = "CVE", weight = 0.7f, isHeader = true)
-            TableCell(text = "MATERIA", weight = 2f, isHeader = true)
-            TableCell(text = "CALIF", weight = 0.8f, isHeader = true)
-            TableCell(text = "SEM", weight = 0.6f, isHeader = true)
-            TableCell(text = "AÑO", weight = 0.8f, isHeader = true)
-            TableCell(text = "OBS", weight = 0.8f, isHeader = true)
-        }
 
-        LazyColumn {
-            items(cardex) { item ->
+        // Área de tabla desplazable
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+        ) {
+            Column(modifier = Modifier.width(1000.dp)) {
+                // Encabezado de la Tabla
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .background(androidx.compose.ui.graphics.Color(0xFF2E7D32)) // Verde Sicenet
+                        .padding(4.dp)
                 ) {
-                    TableCell(text = item.clave, weight = 0.7f)
-                    TableCell(text = item.materia, weight = 2f)
-                    TableCell(text = item.calificacion, weight = 0.8f)
-                    TableCell(text = item.semestre.toString(), weight = 0.6f)
-                    TableCell(text = item.anio.toString(), weight = 0.8f)
-                    TableCell(text = item.observacion, weight = 0.8f) 
+                    TableCell(text = "CVE", weight = 0.7f, isHeader = true)
+                    TableCell(text = "MATERIA", weight = 2f, isHeader = true)
+                    TableCell(text = "CALIF", weight = 0.8f, isHeader = true)
+                    TableCell(text = "SEM", weight = 0.6f, isHeader = true)
+                    TableCell(text = "AÑO", weight = 0.8f, isHeader = true)
+                    TableCell(text = "OBS", weight = 0.8f, isHeader = true)
                 }
-                Divider(thickness = 0.5.dp, color = androidx.compose.ui.graphics.Color.LightGray)
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(cardex) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            TableCell(text = item.clave, weight = 0.7f)
+                            TableCell(text = item.materia, weight = 2f)
+                            TableCell(text = item.calificacion, weight = 0.8f)
+                            TableCell(text = item.semestre.toString(), weight = 0.6f)
+                            TableCell(text = item.anio.toString(), weight = 0.8f)
+                            TableCell(text = item.observacion, weight = 0.8f) 
+                        }
+                        Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(8.dp))
 
-        Button(onClick = onBack) {
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("Regresar")
         }
     }
@@ -288,13 +279,14 @@ fun RowScope.TableCell(
             .padding(2.dp),
         style = MaterialTheme.typography.bodySmall,
         fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-        color = if (isHeader) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Black,
+        color = if (isHeader) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface,
         maxLines = 2,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         fontSize = if (isHeader) 10.sp else 10.sp
     )
 }
 
+@OptIn(InternalSerializationApi::class)
 @Composable
 fun UnitGradesScreen(
     viewModel: SicenetViewModel,
@@ -325,45 +317,59 @@ fun UnitGradesScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Table Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color(0xFF2E7D32))
-                .padding(4.dp)
-        ) {
-            TableCell(text = "MATERIA", weight = 2f, isHeader = true)
-            TableCell(text = "U1", weight = 0.5f, isHeader = true)
-            TableCell(text = "U2", weight = 0.5f, isHeader = true)
-            TableCell(text = "U3", weight = 0.5f, isHeader = true)
-            TableCell(text = "PF", weight = 0.5f, isHeader = true)
-        }
 
-        LazyColumn {
-            items(grades) { item ->
+        // Área de tabla con desplazamiento (scroll)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+        ) {
+            Column(modifier = Modifier.width(1200.dp)) {
+                // Encabezado de la Tabla
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .background(androidx.compose.ui.graphics.Color(0xFF2E7D32))
+                        .padding(4.dp)
                 ) {
-                    TableCell(text = item.materia, weight = 2f)
-                    TableCell(text = item.u1, weight = 0.5f)
-                    TableCell(text = item.u2, weight = 0.5f)
-                    TableCell(text = item.u3, weight = 0.5f)
-                    TableCell(text = item.pf, weight = 0.5f)
+                    TableCell(text = "MATERIA", weight = 2f, isHeader = true)
+                    TableCell(text = "PROFESOR", weight = 1.5f, isHeader = true)
+                    TableCell(text = "U1", weight = 0.4f, isHeader = true)
+                    TableCell(text = "U2", weight = 0.4f, isHeader = true)
+                    TableCell(text = "U3", weight = 0.4f, isHeader = true)
+                    TableCell(text = "PF", weight = 0.4f, isHeader = true)
                 }
-                Divider(thickness = 0.5.dp, color = androidx.compose.ui.graphics.Color.LightGray)
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(grades) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            TableCell(text = item.materia, weight = 2f)
+                            TableCell(text = item.profesor, weight = 1.5f)
+                            TableCell(text = item.u1, weight = 0.4f)
+                            TableCell(text = item.u2, weight = 0.4f)
+                            TableCell(text = item.u3, weight = 0.4f)
+                            TableCell(text = item.pf, weight = 0.4f)
+                        }
+                        Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(8.dp))
 
-        Button(onClick = onBack) {
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("Regresar")
         }
     }
 }
 
+@OptIn(InternalSerializationApi::class)
 @Composable
 fun FinalGradesScreen(
     viewModel: SicenetViewModel,
@@ -394,36 +400,49 @@ fun FinalGradesScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Table Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color(0xFF2E7D32))
-                .padding(4.dp)
-        ) {
-            TableCell(text = "MATERIA", weight = 2f, isHeader = true)
-            TableCell(text = "CALIF", weight = 0.5f, isHeader = true)
-            TableCell(text = "OBSERVACION", weight = 1.5f, isHeader = true)
-        }
 
-        LazyColumn {
-            items(grades) { item ->
+        // Área de tabla con desplazamiento (scroll)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+        ) {
+            Column(modifier = Modifier.width(1100.dp)) {
+                // Encabezado de la Tabla
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .background(androidx.compose.ui.graphics.Color(0xFF2E7D32))
+                        .padding(4.dp)
                 ) {
-                    TableCell(text = item.materia, weight = 2f)
-                    TableCell(text = item.calif, weight = 0.5f)
-                    TableCell(text = item.observacion, weight = 1.5f)
+                    TableCell(text = "MATERIA", weight = 2f, isHeader = true)
+                    TableCell(text = "PROFESOR", weight = 1.5f, isHeader = true)
+                    TableCell(text = "CALIF", weight = 0.5f, isHeader = true)
+                    TableCell(text = "OBSERVACION", weight = 1.5f, isHeader = true)
                 }
-                Divider(thickness = 0.5.dp, color = androidx.compose.ui.graphics.Color.LightGray)
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(grades) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            TableCell(text = item.materia, weight = 2f)
+                            TableCell(text = item.profesor, weight = 1.5f)
+                            TableCell(text = item.calif, weight = 0.5f)
+                            TableCell(text = item.observacion, weight = 1.5f)
+                        }
+                        Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(8.dp))
 
-        Button(onClick = onBack) {
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("Regresar")
         }
     }
